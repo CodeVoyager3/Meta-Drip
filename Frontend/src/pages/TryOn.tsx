@@ -1,179 +1,180 @@
-import { useParams, Link } from "react-router-dom";
-import { useState } from "react";
+// TryOn.tsx
+import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Camera, FlipHorizontal, Settings, ArrowLeft, Share2, ShoppingCart, Maximize2 } from "lucide-react";
-import Navigation from "@/components/Navigation";
-import glasses1 from "@/assets/glasses-1.png";
-import { motion, AnimatePresence } from "framer-motion";
+import { Camera, Settings, ShoppingCart, Share2, Video, VideoOff } from "lucide-react";
+import { Holistic } from "@mediapipe/holistic";
+import { Camera as MPCamera } from "@mediapipe/camera_utils";
 
-// **IMPORTANT**: This URL MUST match the Flask server's address and port (e.g., 
-// http://<YOUR_IP_ADDRESS>:5000/video_feed if running on a separate machine).
-const PYTHON_STREAM_URL = "http://localhost:5000/video_feed"; 
-
-const product = {
-  id: 1, 
-  name: "Premium Blue Eyeglasses",
-  price: 149.99,
-  image: glasses1,
-};
-
-const TryOn = () => {
-  const { id } = useParams();
-  const [faceDetected, setFaceDetected] = useState(true); // Assumed true as the server is running
-  const [showSettings, setShowSettings] = useState(false);
+export default function TryOn() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [scale, setScale] = useState([100]);
-  const [transparency, setTransparency] = useState([100]);
-  
-  // Note: These functions are stubs. Real implementation would require a dedicated 
-  // API endpoint on the Flask server and communication (e.g., WebSockets) from the React app.
+  const [alpha, setAlpha] = useState([100]);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [glassesImg] = useState(() => {
+    const img = new Image();
+    img.src = "/glass.png";  // ← Put glass.png in public/
+    return img;
+  });
 
-  const flipCamera = () => {
-    // This action would require an API call to the Python server to change its VideoCapture index/source.
-    console.log("Flipping camera: Requires a dedicated Flask endpoint.");
+  let holistic: Holistic | null = null;
+  let camera: MPCamera | null = null;
+
+  const startCamera = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    holistic = new Holistic({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
+    });
+
+    holistic.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      smoothSegmentation: false,
+      refineFaceLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+
+    holistic.onResults(onResults);
+
+    camera = new MPCamera(videoRef.current, {
+      onFrame: async () => {
+        if (holistic && videoRef.current) {
+          await holistic.send({ image: videoRef.current });
+        }
+      },
+      width: 640,
+      height: 480,
+    });
+
+    camera.start();
+    setCameraOn(true);
   };
 
-  const captureScreenshot = () => {
-    // Capturing an MJPEG stream is complex and is best done on the server or via a second WebSocket stream.
-    alert("Screenshot requires an additional endpoint on the Python server to return a static image.");
+  const stopCamera = () => {
+    if (camera) camera.stop();
+    setCameraOn(false);
   };
+
+  const onResults = (results: any) => {
+    if (!canvasRef.current || !videoRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+    if (results.faceLandmarks) {
+      const landmarks = results.faceLandmarks;
+      const leftEye = landmarks[33];  // Inner corner
+      const rightEye = landmarks[263];
+
+      const w = canvas.width;
+      const h = canvas.height;
+
+      const leX = leftEye.x * w;
+      const leY = leftEye.y * h;
+      const reX = rightEye.x * w;
+      const reY = rightEye.y * h;
+
+      const eyeDist = Math.hypot(reX - leX, reY - leY);
+      const glassWidth = eyeDist * 2.2 * (scale[0] / 100);
+      const glassHeight = glassWidth * (glassesImg.height / glassesImg.width);
+
+      const centerX = (leX + reX) / 2;
+      const centerY = (leY + reY) / 2;
+
+      const x = centerX - glassWidth / 2;
+      const y = centerY - glassHeight / 2;
+
+      ctx.globalAlpha = alpha[0] / 100;
+      ctx.drawImage(glassesImg, x, y, glassWidth, glassHeight);
+    }
+
+    ctx.restore();
+  };
+
+  const capture = () => {
+    if (!canvasRef.current) return;
+    const link = document.createElement("a");
+    link.href = canvasRef.current.toDataURL("image/png");
+    link.download = "tryon-with-glasses.png";
+    link.click();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (camera) camera.stop();
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen">
-      <Navigation />
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-pink-50 p-6">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold text-center mb-6">Try On Glasses (Live Webcam)</h1>
 
-      <div className="container mx-auto px-4 py-6">
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-          <Button variant="glass" asChild className="mb-4">
-            <Link to={`/product/${id || 1}`}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Product
-            </Link>
-          </Button>
-        </motion.div>
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Camera + Canvas */}
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden relative">
+            <video ref={videoRef} className="hidden" />
+            <canvas ref={canvasRef} width={640} height={480} className="w-full" />
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          <motion.div 
-            className="lg:col-span-2"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <div className="relative glass-strong rounded-3xl overflow-hidden shadow-2xl">
-              <div className="aspect-video bg-gradient-to-br from-muted to-background relative">
-                
-                {/* *** STREAM EMBEDDED HERE *** */}
-                {/* This <img> tag displays the live processed stream from your Python backend */}
-                <img 
-                  src={PYTHON_STREAM_URL}
-                  alt="Virtual Try-On Stream from Python Server"
-                  className="w-full h-full object-cover aspect-video" 
-                  // Styles for stream
-                />
-                
-                {/* --- UI Overlays (Status, Buttons) --- */}
-
-                <motion.div 
-                  className="absolute top-4 left-4 flex items-center gap-2 glass-strong px-4 py-2 rounded-full text-sm shadow-lg"
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                >
-                  <motion.div 
-                    className={`w-2 h-2 rounded-full ${faceDetected ? 'bg-green-500' : 'bg-red-500'}`}
-                    animate={faceDetected ? { scale: [1, 1.2, 1] } : {}}
-                    transition={{ repeat: Infinity, duration: 2 }}
-                  />
-                  <span className="font-medium">{faceDetected ? 'Face Detected (Remote)' : 'Stream Active'}</span>
-                </motion.div>
-
-                <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3">
-                  <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                    <Button variant="glass" size="icon" className="w-12 h-12 rounded-full shadow-lg" onClick={flipCamera}>
-                      <FlipHorizontal className="w-5 h-5" />
-                    </Button>
-                  </motion.div>
-                  <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                    <Button variant="accent" size="icon" className="w-16 h-16 rounded-full shadow-xl" onClick={captureScreenshot}>
-                      <Camera className="w-6 h-6" />
-                    </Button>
-                  </motion.div>
-                  <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                    <Button variant="glass" size="icon" className="w-12 h-12 rounded-full shadow-lg" onClick={() => setShowSettings(!showSettings)}>
-                      <Settings className="w-5 h-5" />
-                    </Button>
-                  </motion.div>
-                </div>
+            {!cameraOn && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                <Button size="lg" onClick={startCamera}>
+                  <Video className="w-5 h-5 mr-2" /> Start Camera
+                </Button>
               </div>
-            </div>
-          </motion.div>
+            )}
 
-          {/* Right Column (Settings/Buttons) */}
-          <motion.div 
-            className="space-y-6"
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-          >
-            <div className="glass-strong rounded-2xl p-6">
-              <div className="flex items-start gap-4 mb-6">
-                <motion.div className="glass rounded-xl p-2" whileHover={{ scale: 1.05 }}>
-                  <img src={product.image} alt="Product" className="w-20 h-20 object-contain" />
-                </motion.div>
+            {cameraOn && (
+              <div className="absolute top-4 left-4 flex gap-2">
+                <Button size="icon" variant="secondary" onClick={stopCamera}>
+                  <VideoOff className="w-4 h-4" />
+                </Button>
+                <Button size="icon" onClick={capture}>
+                  <Camera className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Controls */}
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-2xl shadow-xl">
+              <h3 className="font-semibold mb-4">Adjust Fit</h3>
+              <div className="space-y-4">
                 <div>
-                  <h3 className="font-semibold text-lg mb-1">{product.name}</h3>
-                  <p className="text-2xl font-bold gradient-text">${product.price}</p>
+                  <label className="text-sm">Size: {scale[0]}%</label>
+                  <Slider value={scale} onValueChange={setScale} min={70} max={140} />
+                </div>
+                <div>
+                  <label className="text-sm">Transparency: {alpha[0]}%</label>
+                  <Slider value={alpha} onValueChange={setAlpha} min={30} max={100} />
                 </div>
               </div>
-
-              <AnimatePresence>
-                {showSettings && (
-                  <motion.div 
-                    className="space-y-6 pt-6 border-t border-border/20"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                  >
-                    <div>
-                      <label className="text-sm font-medium mb-3 block flex items-center gap-2">
-                        <Maximize2 className="w-4 h-4 text-accent" />
-                        Size: {scale[0]}%
-                      </label>
-                      <Slider value={scale} onValueChange={setScale} min={80} max={120} step={1} />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-3 block">Transparency: {transparency[0]}%</label>
-                      <Slider value={transparency} onValueChange={setTransparency} min={50} max={100} step={1} />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
-            <div className="space-y-3">
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button variant="accent" className="w-full" size="lg">
-                  <ShoppingCart className="w-4 h-4 mr-2" />
-                  Buy Now
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button variant="glass" className="w-full" size="lg">
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Share
-                </Button>
-              </motion.div>
+            <div className="flex gap-3">
+              <Button className="flex-1" size="lg">
+                <ShoppingCart className="w-4 h-4 mr-2" /> Buy Now
+              </Button>
+              <Button variant="outline" className="flex-1" size="lg">
+                <Share2 className="w-4 h-4 mr-2" /> Share
+              </Button>
             </div>
 
-            <motion.div className="glass-strong rounded-2xl p-5">
-              <p className="text-sm">
-                <span className="text-2xl mr-2">💡</span>
-                <strong className="text-accent">Tip:</strong>{" "}
-                <span className="text-muted-foreground">Adjust lighting for best results.</span>
-              </p>
-            </motion.div>
-          </motion.div>
+            <p className="text-xs text-muted-foreground text-center">
+              Uses your webcam • Works on mobile • No data sent to server
+            </p>
+          </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default TryOn;
+}
