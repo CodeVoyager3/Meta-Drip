@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, X, Glasses } from "lucide-react";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 
 const Navigation = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -66,6 +67,16 @@ const Navigation = () => {
                 <Link to="/store">Start Shopping</Link>
               </Button>
             </motion.div>
+            <SignedOut>
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button variant="outline" asChild>
+                  <Link to="/sign-in">Sign In</Link>
+                </Button>
+              </motion.div>
+            </SignedOut>
+            <SignedIn>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
           </div>
 
           {/* Mobile menu button */}
@@ -114,6 +125,29 @@ const Navigation = () => {
                   </Link>
                 </Button>
               </motion.div>
+              <SignedOut>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link to="/sign-in" onClick={() => setIsOpen(false)}>
+                      Sign In
+                    </Link>
+                  </Button>
+                </motion.div>
+              </SignedOut>
+              <SignedIn>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="flex justify-center pt-2"
+                >
+                  <UserButton afterSignOutUrl="/" />
+                </motion.div>
+              </SignedIn>
             </motion.div>
           )}
         </AnimatePresence>

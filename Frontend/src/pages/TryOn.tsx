@@ -6,28 +6,86 @@ import { Camera, ShoppingCart, Share2, Video, VideoOff } from "lucide-react";
 
 declare global {
   interface Window {
-    Holistic: any;
+    FaceMesh: any;
     Camera: any;
   }
+}
+
+interface FaceRotation {
+  pitch: number;
+  yaw: number;
+  roll: number;
 }
 
 export default function TryOn() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const glassesContainerRef = useRef<HTMLDivElement>(null);
+  const glassesImgRef = useRef<HTMLImageElement>(null);
   const [scale, setScale] = useState([100]);
   const [alpha, setAlpha] = useState([100]);
   const [cameraOn, setCameraOn] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [rotation, setRotation] = useState<FaceRotation>({ pitch: 0, yaw: 0, roll: 0 });
+  const [glassesPosition, setGlassesPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const faceMeshRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
 
   const glassesImg = useRef(new Image());
   useEffect(() => {
     glassesImg.current.src = "/glass.png";
   }, []);
 
+  // Helper function to calculate head rotation angles from face landmarks
+  const calculateHeadRotation = (landmarks: any[], width: number, height: number): FaceRotation => {
+    try {
+      // Key landmarks for rotation calculation
+      const nose = landmarks[0]; // Nose tip
+      const leftEar = landmarks[234]; // Left ear
+      const rightEar = landmarks[454]; // Right ear
+      const leftEye = landmarks[33];
+      const rightEye = landmarks[263];
+      const mouthLeft = landmarks[78];
+      const mouthRight = landmarks[308];
+
+      // Convert to pixel coordinates
+      const noseX = nose.x * width;
+      const noseY = nose.y * height;
+      const leftEarX = leftEar.x * width;
+      const rightEarX = rightEar.x * width;
+      const leftEyeX = leftEye.x * width;
+      const rightEyeX = rightEye.x * width;
+      const mouthLeftY = mouthLeft.y * height;
+      const mouthRightY = mouthRight.y * height;
+
+      // Calculate YAW (head turning left/right)
+      const eyeWidth = rightEyeX - leftEyeX;
+      const earToNoseLeft = noseX - leftEarX;
+      const earToNoseRight = rightEarX - noseX;
+      const yaw = Math.atan2(earToNoseLeft - earToNoseRight, eyeWidth) * (180 / Math.PI);
+
+      // Calculate ROLL (head tilt)
+      const eyeSlope = rightEye.y - leftEye.y;
+      const roll = Math.atan2(eyeSlope, (rightEyeX - leftEyeX) / width) * (180 / Math.PI);
+
+      // Calculate PITCH (head up/down)
+      const mouthTilt = Math.abs(mouthLeftY - mouthRightY);
+      const pitch = Math.atan2(nose.z || 0, Math.max(1, eyeWidth / 50)) * (180 / Math.PI);
+
+      return {
+        pitch: Math.max(-30, Math.min(30, pitch * 2)),
+        yaw: Math.max(-40, Math.min(40, yaw)),
+        roll: Math.max(-30, Math.min(30, roll)),
+      };
+    } catch (e) {
+      return { pitch: 0, yaw: 0, roll: 0 };
+    }
+  };
+
   // Load MediaPipe scripts
   useEffect(() => {
     const loadScripts = async () => {
-      if (window.Holistic && window.Camera) {
+      if (window.FaceMesh && window.Camera) {
         setIsLoaded(true);
         return;
       }
@@ -38,16 +96,26 @@ export default function TryOn() {
           script.src = src;
           script.onload = resolve;
           script.onerror = reject;
-          document.body.appendChild(script);
+          script.crossOrigin = "anonymous";
+          document.head.appendChild(script);
         });
       };
 
       try {
+        // Load FaceMesh instead of Holistic (lighter and more stable)
         await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js");
         await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js");
         await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js");
-        await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js");
-        setIsLoaded(true);
+        await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js");
+        
+        // Wait for scripts to fully initialize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        if (window.FaceMesh && window.Camera) {
+          setIsLoaded(true);
+        } else {
+          throw new Error("MediaPipe FaceMesh failed to initialize");
+        }
       } catch (err) {
         console.error("Failed to load MediaPipe", err);
       }
@@ -59,40 +127,50 @@ export default function TryOn() {
   const startCamera = async () => {
     if (!isLoaded || !videoRef.current || !canvasRef.current) return;
 
-    const holistic = new window.Holistic({
+    const faceMesh = new window.FaceMesh({
       locateFile: (file: string) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
+        `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
     });
 
-    holistic.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      enableSegmentation: false,
-      refineFaceLandmarks: true,
+    // Optimized settings for better performance
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5,
     });
 
-    holistic.onResults(onResults);
+    faceMesh.onResults(onResults);
+    faceMeshRef.current = faceMesh;
 
     const camera = new window.Camera(videoRef.current, {
       onFrame: async () => {
-        await holistic.send({ image: videoRef.current });
+        if (faceMeshRef.current && videoRef.current) {
+          await faceMeshRef.current.send({ image: videoRef.current });
+        }
       },
       width: 640,
       height: 480,
     });
 
+    cameraRef.current = camera;
     camera.start();
     setCameraOn(true);
   };
 
   const stopCamera = () => {
-    window.location.reload(); // Simple reset
+    if (cameraRef.current) {
+      cameraRef.current.stop();
+    }
+    if (faceMeshRef.current) {
+      faceMeshRef.current.close();
+    }
+    setCameraOn(false);
   };
 
   const onResults = (results: any) => {
     if (!canvasRef.current || !videoRef.current) return;
+    
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -101,8 +179,8 @@ export default function TryOn() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
 
-    if (results.faceLandmarks) {
-      const landmarks = results.faceLandmarks;
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
+      const landmarks = results.multiFaceLandmarks[0];
       const leftEye = landmarks[33];
       const rightEye = landmarks[263];
 
@@ -121,11 +199,44 @@ export default function TryOn() {
       const centerX = (leX + reX) / 2;
       const centerY = (leY + reY) / 2;
 
-      const x = centerX - glassWidth / 2;
-      const y = centerY - glassHeight / 2;
+      // Calculate 3D rotation from landmarks
+      const headRotation = calculateHeadRotation(landmarks, w, h);
+      setRotation(headRotation);
 
+      // Save context for transformation
+      ctx.save();
+
+      // Move to center point for rotation
+      ctx.translate(centerX, centerY);
+
+      // Apply 2D rotation approximating 3D rotation
+      ctx.rotate((headRotation.roll * Math.PI) / 180);
+
+      // Apply perspective scaling for yaw
+      const yawScale = Math.cos((headRotation.yaw * Math.PI) / 180);
+      const pitchScale = Math.cos((headRotation.pitch * Math.PI) / 180);
+      
+      ctx.scale(Math.abs(yawScale), pitchScale);
+
+      // Draw glasses with transparency
       ctx.globalAlpha = alpha[0] / 100;
-      ctx.drawImage(glassesImg.current, x, y, glassWidth, glassHeight);
+      ctx.drawImage(
+        glassesImg.current,
+        -glassWidth / 2,
+        -glassHeight / 2,
+        glassWidth,
+        glassHeight
+      );
+
+      ctx.restore();
+
+      // Update position state for HTML overlay (if needed)
+      setGlassesPosition({
+        x: centerX - glassWidth / 2,
+        y: centerY - glassHeight / 2,
+        width: glassWidth,
+        height: glassHeight
+      });
     }
 
     ctx.restore();
