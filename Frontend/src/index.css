@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 30 33% 95%;
+    --foreground: 20 13% 17%;
+
+    --card: 38 100% 97%;
+    --card-foreground: 20 13% 17%;
+
+    --popover: 38 100% 97%;
+    --popover-foreground: 20 13% 17%;
+
+    --primary: 18 29% 33%;
+    --primary-foreground: 30 33% 95%;
+    --primary-hover: 18 29% 28%;
+
+    --secondary: 30 29% 88%;
+    --secondary-foreground: 20 13% 17%;
+    --secondary-hover: 30 29% 82%;
+
+    --accent: 27 100% 73%;
+    --accent-foreground: 20 13% 17%;
+    --accent-hover: 27 100% 68%;
+
+    --muted: 30 29% 88%;
+    --muted-foreground: 30 4% 64%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 38 100% 97%;
+
+    --border: 30 4% 64%;
+    --input: 38 100% 97%;
+    --ring: 18 29% 33%;
+
+    --radius: 1rem;
+
+    /* Extended palette */
+    --rich-taupe: 30 11% 46%;
+    --cream: 38 100% 97%;
+    --sunset: 27 100% 73%;
+
+    /* Glass effect variables */
+    --glass-bg: 38 100% 97% / 0.7;
+    --glass-border: 30 4% 64% / 0.2;
+    --glass-shadow: 0 8px 32px 0 rgb(31 38 135 / 0.15);
+    
+    /* Custom gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(30 33% 95%), hsl(30 29% 88%));
+    --gradient-card: linear-gradient(180deg, hsl(38 100% 97% / 0.9), hsl(30 29% 88% / 0.8));
+    --gradient-warm: linear-gradient(135deg, hsl(27 100% 73% / 0.3), hsl(18 29% 33% / 0.2));
+    
+    /* Custom shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    --shadow-glass: 0 8px 32px 0 rgb(31 38 135 / 0.15);
+    --shadow-primary: 0 10px 30px -10px hsl(18 29% 33% / 0.3);
+    
+    /* Transitions */
+    --transition-base: all 0.2s ease-out;
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .dark {
+    --background: 20 13% 17%;
+    --foreground: 30 33% 95%;
+
+    --card: 20 13% 20%;
+    --card-foreground: 30 33% 95%;
+
+    --popover: 20 13% 20%;
+    --popover-foreground: 30 33% 95%;
+
+    --primary: 27 100% 73%;
+    --primary-foreground: 20 13% 17%;
+    --primary-hover: 27 100% 68%;
+
+    --secondary: 30 11% 25%;
+    --secondary-foreground: 30 33% 95%;
+    --secondary-hover: 30 11% 30%;
+
+    --accent: 27 100% 73%;
+    --accent-foreground: 20 13% 17%;
+    --accent-hover: 27 100% 68%;
+
+    --muted: 30 11% 25%;
+    --muted-foreground: 30 4% 64%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 30 33% 95%;
+
+    --border: 30 11% 30%;
+    --input: 20 13% 20%;
+    --ring: 27 100% 73%;
+
+    --glass-bg: 20 13% 20% / 0.7;
+    --glass-border: 30 4% 64% / 0.2;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', 'Segoe UI', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+  
+  .hover-lift {
+    @apply transition-all duration-200 hover:shadow-lg hover:-translate-y-1;
+  }
+
+  .glass {
+    @apply bg-card/70 backdrop-blur-xl border border-border/20;
+    box-shadow: var(--shadow-glass);
+  }
+
+  .glass-strong {
+    @apply bg-card/80 backdrop-blur-2xl border border-border/30;
+    box-shadow: var(--shadow-glass);
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-primary;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
